@@ -8,17 +8,7 @@ st.set_page_config(page_title="Churn Predictor", page_icon="📉", layout="wide"
 
 # === Title ===
 st.title("📉 Customer Churn Prediction")
-st.markdown("Upload customer data to predict churn. Ensure your file matches the expected format.")
-
-# === Required Columns ===
-required_features = [
-    'Mobile_Money', 'Voice_PAYG', 'Latitude', 'SMS_Bundle_Rev', 'Calls', 'Mbs', 'Longitude',
-    'Manufacturer', 'Model_Name', 'Device_Type', 'Handset_Type', 'Gender', 'Value_Segment',
-    'Age_Groups', 'REC_30_Days', 'REC_90_Days', 'Q_Rec', 'Q_Rec_over100mbs', 'Recon',
-    'Gross_Add', 'Win_Backs', 'IS_NEW_SUBSCRIBER', 'IS_RECENTLY_ACTIVE', 'IS_BASE_ACTIVE',
-    'IS_ENGAGED_USER', 'IS_HEAVY_USER', 'IS_WINBACK', 'IS_RECONNECTED', 'IS_PREMIUM_DEVICE',
-    'DEVICE_CATEGORY'
-]
+st.markdown("Upload customer data to predict churn. The app will use the features from your trained model.")
 
 # === Load model safely ===
 @st.cache_resource
@@ -30,47 +20,62 @@ def load_model(model_path):
 MODEL_PATH = "model.pkl"
 model = load_model(MODEL_PATH)
 
-# === Sidebar: Sample Template ===
-st.sidebar.header("📁 Download Sample CSV Template")
-sample_data = pd.DataFrame([{
-    'Mobile_Money': 35000,
-    'Voice_PAYG': 1200,
-    'Latitude': 0.3476,
-    'SMS_Bundle_Rev': 500,
-    'Calls': 45,
-    'Mbs': 1500,
-    'Longitude': 32.5825,
-    'Manufacturer': 'Samsung',
-    'Model_Name': 'Galaxy S20',
-    'Device_Type': 'Smartphone',
-    'Handset_Type': '4G',
-    'Gender': 'Male',
-    'Value_Segment': 'High',
-    'Age_Groups': '25-34',
-    'REC_30_Days': 1,
-    'REC_90_Days': 1,
-    'Q_Rec': 1,
-    'Q_Rec_over100mbs': 1,
-    'Recon': 0,
-    'Gross_Add': 0,
-    'Win_Backs': 0,
-    'IS_NEW_SUBSCRIBER': 0,
-    'IS_RECENTLY_ACTIVE': 1,
-    'IS_BASE_ACTIVE': 1,
-    'IS_ENGAGED_USER': 1,
-    'IS_HEAVY_USER': 1,
-    'IS_WINBACK': 0,
-    'IS_RECONNECTED': 0,
-    'IS_PREMIUM_DEVICE': 1,
-    'DEVICE_CATEGORY': 'smartphone_4g'
-}])
+# === Sidebar: Auto-generate CSV template with dummy values ===
+st.sidebar.header("📁 Download Model-Based CSV Template")
 
-st.sidebar.download_button(
-    label="⬇️ Download CSV Template",
-    data=sample_data.to_csv(index=False),
-    file_name="churn_template.csv",
-    mime="text/csv"
-)
+if model:
+    try:
+        feature_columns = model.feature_names_in_.tolist()
+
+        # Create dummy sample data with realistic values
+        sample_data = {col: None for col in feature_columns}
+
+        # Optional: Add smart defaults for known features
+        for col in feature_columns:
+            if "age" in col.lower():
+                sample_data[col] = 30
+            elif "gender" in col.lower():
+                sample_data[col] = "Male"
+            elif "segment" in col.lower():
+                sample_data[col] = 4
+            elif "mb" in col.lower():
+                sample_data[col] = 1000
+            elif "revenue" in col.lower() or "money" in col.lower():
+                sample_data[col] = 50000
+            elif "calls" in col.lower() or "sms" in col.lower():
+                sample_data[col] = 100
+            elif "device" in col.lower() or "handset" in col.lower():
+                sample_data[col] = 9
+            elif "lat" in col.lower():
+                sample_data[col] = 0.35
+            elif "long" in col.lower():
+                sample_data[col] = 32.58
+            elif "rec" in col.lower() or "q_rec" in col.lower():
+                sample_data[col] = 1
+            elif "is_" in col.lower():
+                sample_data[col] = 1
+            elif "manufacturer" in col.lower():
+                sample_data[col] = 0
+            elif "model" in col.lower():
+                sample_data[col] = 4
+            elif "gender" in col.lower():
+                sample_data[col] = 2
+            else:
+                sample_data[col] = 0  # fallback
+
+        sample_template = pd.DataFrame([sample_data])
+
+        st.sidebar.download_button(
+            label="⬇️ Download CSV Template with Sample Data",
+            data=sample_template.to_csv(index=False),
+            file_name="churn_template.csv",
+            mime="text/csv"
+        )
+    except Exception:
+        st.sidebar.warning("⚠️ Unable to extract feature names from the model.")
+else:
+    st.sidebar.warning("⚠️ Model not found. Upload `model.pkl` to use this app.")
+    feature_columns = []
 
 # === File Upload ===
 st.subheader("📤 Upload Customer CSV")
@@ -84,33 +89,33 @@ elif uploaded_file:
         st.write("✅ Uploaded Data Preview")
         st.dataframe(df.head())
 
-        missing_cols = [col for col in required_features if col not in df.columns]
+        # === Validate columns
+        missing_cols = [col for col in feature_columns if col not in df.columns]
         if missing_cols:
-            st.error("❌ Missing required columns:")
+            st.error("❌ Your file is missing the following required columns:")
             st.code(missing_cols)
         else:
-            # Extract only required features
-            X_new = df[required_features].copy()
-
-            # Predict classes
+            # Predict
+            X_new = df[feature_columns].copy()
             predictions = model.predict(X_new)
 
-            # Safely predict probabilities
+            # Handle prediction probabilities safely
             if hasattr(model, 'predict_proba'):
                 probabilities = model.predict_proba(X_new)[:, 1]
             elif hasattr(model, 'decision_function'):
-                decision_scores = model.decision_function(X_new)
-                probabilities = (decision_scores - decision_scores.min()) / (decision_scores.max() - decision_scores.min())
+                scores = model.decision_function(X_new)
+                probabilities = (scores - scores.min()) / (scores.max() - scores.min())
             else:
                 probabilities = ["N/A"] * len(X_new)
 
-            # Append to DataFrame
+            # Append to results
             df['Churn_Predicted'] = predictions
             df['Churn_Probability'] = probabilities
 
             st.success("✅ Prediction Completed")
             st.dataframe(df[['Churn_Predicted', 'Churn_Probability']])
 
+            # Download
             csv = df.to_csv(index=False).encode('utf-8')
             st.download_button(
                 label="📥 Download Results as CSV",
@@ -122,4 +127,4 @@ elif uploaded_file:
         st.error("❌ Failed to process your file.")
         st.exception(e)
 else:
-    st.info("📄 Please upload your customer dataset to get started.")
+    st.info("📄 Please upload a customer dataset to begin.")
