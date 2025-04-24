@@ -27,7 +27,7 @@ def load_model(model_path):
         return joblib.load(model_path)
     return None
 
-MODEL_PATH = "best_model_SMOTE_XGBoost.pkl"
+MODEL_PATH = "model.pkl"
 model = load_model(MODEL_PATH)
 
 # === Sidebar: Sample Template ===
